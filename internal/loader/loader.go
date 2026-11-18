@@ -1,6 +1,7 @@
 package loader
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"log/slog"
@@ -132,6 +133,23 @@ func LoadPackages(
 			projectPackages[newtypes.GetID(pkg)] = allPackages[newtypes.GetID(pkg)]
 		}
 
+		// packages.Load reports many failures in Package.Errors rather than in
+		// its returned error. Report these failures when no usable source was
+		// recovered, while preserving partial indexing and valid empty results.
+		for _, pkg := range projectPackages {
+			if len(pkg.Syntax) > 0 {
+				return nil
+			}
+		}
+		var loadErrors []error
+		for _, pkg := range pkgs {
+			for _, err := range pkg.Errors {
+				loadErrors = append(loadErrors, err)
+			}
+		}
+		if err := errors.Join(loadErrors...); err != nil {
+			return fmt.Errorf("loading Go packages for %q: %w", patterns, err)
+		}
 		return nil
 	})
 	return projectPackages, allPackages, err
